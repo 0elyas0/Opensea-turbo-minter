@@ -9,7 +9,7 @@ User=osnm
 Group=osnm
 WorkingDirectory=/opt/osnm-ui
 Environment=OSNM_BIN=/usr/local/bin/opensea-mint
-Environment=OSNM_WORKDIR=/home/osnm/osnm-z
+Environment=OSNM_WORKDIR=/home/osnm/mint-cli
 Environment=OSNM_STATE_DIR=/home/osnm/.osnm-ui
 ExecStart=/opt/osnm-ui/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8787 --log-level warning
 Restart=on-failure

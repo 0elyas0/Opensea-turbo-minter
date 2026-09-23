@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>osnm-z mint</title>
+<title>Turbo Minter</title>
 <style>
   :root{
     --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a;
@@ -105,7 +105,7 @@
 <div class="wrap">
   <header>
     <div class="logo">Z</div>
-    <h1>osnm-z mint scheduler</h1>
+    <h1>SeaDrop turbo minter</h1>
     <div class="chips" id="chips"></div>
   </header>
   <div class="sub">single-wallet · a078b67 · 127.0.0.1 only · chain auto-detected per drop</div>
@@ -124,7 +124,7 @@
       <div style="flex:0"><button onclick="clearKey()">Clear</button></div>
     </div>
     <div id="keyhint" class="note"></div>
-    <div class="note">Written into <code>.env</code> only for the instant the bot
+    <div class="note">Written into <code>.env</code> only for the instant the CLI
       reads it, then shredded. Enter a different wallet any time.</div>
   </section>
 
@@ -155,7 +155,7 @@
       <label class="mode" id="modeStdBox">
         <input type="radio" name="mode" value="std" checked onchange="modeChanged()">
         <div>
-          <strong>Standard</strong> — via the osnm-z bot
+          <strong>Standard</strong> — via the external mint CLI
           <div class="note" style="margin:2px 0 0">Works for every stage type
             including allowlist and signed presale. Lands ~0.55–1.35 s after
             open, because OpenSea's calldata API costs ~530 ms.</div>
@@ -202,7 +202,7 @@
     </div>
 
     <button class="mint" id="mintBtn" onclick="doMint()" style="margin-top:12px">MINT</button>
-    <div class="note" id="mintNote">The bot waits and fires at the exact stage
+    <div class="note" id="mintNote">The CLI waits and fires at the exact stage
       start time, with fees calculated automatically at that moment.</div>
   </section>
 
@@ -393,7 +393,7 @@ function renderPlan(p){
         <td class="m dim">${esc((s.end_time||'').replace('T',' ').replace('.000Z',''))}</td>
         <td class="m">${s.max_per_wallet??'—'}</td></tr>`;
     });
-    h+='</table><div class="note">Leave unselected to let the bot pick the first eligible phase.</div></div>';
+    h+='</table><div class="note">Leave unselected to let the CLI pick the first eligible phase.</div></div>';
   }
 
   if(p.starts_at){
@@ -434,7 +434,7 @@ function modeChanged(){
   $('modeTurboBox').classList.toggle('on',t);
   $('mintNote').textContent=t
     ? 'Pre-signs now and broadcasts the instant the on-chain startTime passes.'
-    : 'The bot waits and fires at the stage start time, fees computed then.';
+    : 'The CLI waits and fires at the stage start time, fees computed then.';
   if(PLAN)renderPlan(PLAN);
 }
 

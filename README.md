@@ -102,18 +102,19 @@ This is the part worth reading carefully.
 **No key is ever stored.** Every mint asks for it again, and you can use a
 different wallet each time.
 
-**Standard mode.** `opensea-mint` only reads its key from a `.env` file — never
-from the process environment — and reads it exactly once at startup. So the
-console writes `WALLET_KEY`, launches the bot, waits for its `Mint target:`
-prompt (which proves the key is already in the bot's memory, because
-`execute()` builds the signer before that prompt appears), then shreds the key
-back out. Measured on-disk window: **~0.11 s**, verified with a 50 ms poller.
+**Standard mode.** The external CLI is expected to read its key from a `.env`
+file — never from the process environment — and to read it exactly once at
+startup. So the console writes `WALLET_KEY`, launches it, and waits for the
+`Mint target:` prompt, which proves the config has already been read. Only then
+does it shred the key back out. Keying the scrub off the CLI's own prompt rather
+than a fixed timeout is what keeps the window short: measured at **~0.11 s**,
+verified with a 50 ms poller.
 
 **Turbo mode.** Pre-signing is impossible without signing, so the key is used in
 the console's own process. It is never written to disk and never returned by any
 endpoint, but this is a weaker position than Standard, where the key only ever
-reached the Rust binary. If that trade matters more than the speed, use
-Standard.
+reached a separate short-lived process. If that trade matters more than the
+speed, use Standard.
 
 A header chip shows `key on disk: no` at all times; `YES` means a run died
 mid-launch and the service should be restarted.
@@ -158,19 +159,25 @@ The console binds to `127.0.0.1` only and refuses non-loopback `Host` headers,
 so it is not reachable from the internet and cannot be hit by DNS rebinding.
 **Do not expose it publicly.**
 
-### Standard mode also needs the bot
+### Standard mode needs an external mint CLI
 
-Turbo mode is self-contained. Standard mode drives
-[zunmax/osnm-z](https://github.com/zunmax/osnm-z) (MIT), which must be built and
-installed separately:
+**Turbo mode is self-contained** — it talks only to the chain and needs nothing
+else installed.
+
+Standard mode is a driver, not a minter. It shells out to a separate
+command-line mint tool, feeds it the collection, phase and quantity by
+answering its interactive prompts, and streams its output back to the browser.
+That external tool is not part of this repository and is not distributed with
+it. Supply your own and point the console at it:
 
 ```bash
-git clone https://github.com/zunmax/osnm-z.git
-cd osnm-z && cargo install --path . --locked --root /usr/local
+# any CLI exposing `mint`, `doctor` and a .env-based config works
+export OSNM_BIN=/usr/local/bin/opensea-mint
 ```
 
-That project is third-party and unaffiliated with this one. Pin a commit you
-have reviewed; it takes a private key, so read it before you trust it.
+The expected interface is documented in [docs/standard-mode.md](docs/standard-mode.md).
+
+Whatever you use, review it first — it reads a private key.
 
 ---
 
@@ -178,12 +185,13 @@ have reviewed; it takes a private key, so read it before you trust it.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OSNM_BIN` | `/usr/local/bin/opensea-mint` | bot binary (Standard mode) |
-| `OSNM_WORKDIR` | `~/osnm-z` | directory holding `.env` |
+| `OSNM_BIN` | `/usr/local/bin/opensea-mint` | external mint CLI (Standard mode only) |
+| `OSNM_WORKDIR` | `~/mint-cli` | directory holding `.env` |
 | `OSNM_STATE_DIR` | `~/.osnm-ui` | job logs and network config |
 
-`WORKDIR` matters: `opensea-mint` resolves `.env` by walking up from the current
-directory, so jobs run with an explicit `cwd`.
+`OSNM_WORKDIR` matters: the CLI is expected to resolve `.env` by walking up from
+the current directory, so jobs are launched with an explicit `cwd` rather than
+inheriting one.
 
 ---
 
@@ -198,7 +206,7 @@ directory, so jobs run with an explicit `cwd`.
 - **Price is read at arm time.** A creator who changes the drop config before
   open will make the prepared value wrong.
 - **The fee ceiling is fixed at arm time** (base fee × multiplier + tip).
-- Standard mode's funding check is advisory; the bot runs the authoritative one.
+- Standard mode's funding check is advisory; the CLI runs the authoritative one.
 
 ---
 

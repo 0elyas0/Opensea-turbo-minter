@@ -8,7 +8,7 @@ set -euo pipefail
 
 SERVICE_USER="${SERVICE_USER:-osnm}"
 APP_DIR="${APP_DIR:-/opt/osnm-ui}"
-WORKDIR="${WORKDIR:-/home/$SERVICE_USER/osnm-z}"
+WORKDIR="${WORKDIR:-/home/$SERVICE_USER/mint-cli}"
 STATE_DIR="${STATE_DIR:-/home/$SERVICE_USER/.osnm-ui}"
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

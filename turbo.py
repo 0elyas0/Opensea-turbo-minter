@@ -3,10 +3,10 @@
 
 Why this exists
 ---------------
-The osnm-z bot must ask OpenSea's GraphQL API for the transaction target and
+An API-based minter has to ask OpenSea's GraphQL API for the transaction target and
 calldata at fire time. Measured from this VPS that call costs ~530 ms even on a
 warm HTTP/2 connection (the Cloudflare edge is 1.4 ms away, so it is OpenSea's
-backend, not the network). With the 250 ms retry gap on top, the bot lands a
+backend, not the network). With the 250 ms retry gap on top, it lands a
 transaction roughly 0.55-1.35 s after a stage opens. That loses a real FCFS race.
 
 For a PUBLIC SeaDrop stage none of that is necessary. The mint call is:
@@ -24,7 +24,7 @@ bot.
 
 Key handling: signing happens here, in this process, so the private key lives
 in memory for as long as it takes to sign. It is never written to disk and
-never returned by any endpoint. That is a real difference from the bot path,
+never returned by any endpoint. That is a real difference from the Standard path,
 where the key only ever reached the Rust process.
 """
 from __future__ import annotations

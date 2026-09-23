@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""Local web UI for the osnm-z `opensea-mint` CLI.
+"""Local web UI for minting OpenSea SeaDrop drops.
 
-What this adds on top of the bot
+What this adds on top of the external CLI
 --------------------------------
 * Auto chain detection. OpenSea's `collectionBySlug` metadata query is
   UNAUTHENTICATED and returns `chain { identifier networkId }`, so we can learn
   which chain a drop lives on before launching anything, then point RPC_URL at
-  the matching network. The bot itself cannot switch chains - it uses whatever
+  the matching network. The CLI itself cannot switch chains - it uses whatever
   RPC_URL resolves to - so the UI picks the RPC for it.
 * Auto price. The per-stage `eligiblePrice` field is UNAUTHORIZED without a SIWE
   session, so instead we read the price straight off the SeaDrop contract with
   `getPublicDrop(address)`. That is on-chain truth and needs no key. It covers
   public-sale stages; allowlist/presale prices stay unknown.
-* One-shot mint. A background thread drives the bot's interactive prompts end to
+* One-shot mint. A background thread drives the external CLI's interactive prompts end to
   end, so the browser just polls job state.
 
-Key handling: the bot reads WALLET_KEY only from .env, and only once at start.
-So the key is written, the bot is launched, and as soon as it logs
+Key handling: the CLI reads WALLET_KEY only from .env, and only once at start.
+So the key is written, the CLI is launched, and as soon as it logs
 "Config loaded:" the key is shredded back out. Nothing persists between runs.
 """
 from __future__ import annotations
@@ -42,10 +42,10 @@ from pydantic import BaseModel
 import turbo
 
 # All paths are overridable so the service is not tied to one machine's layout.
-# WORKDIR matters: opensea-mint resolves .env by walking up from the current
+# WORKDIR matters: the external mint CLI resolves .env by walking up from the current
 # directory, so jobs must run with an explicit cwd that contains it.
 BIN = os.environ.get("OSNM_BIN", "/usr/local/bin/opensea-mint")
-WORKDIR = Path(os.environ.get("OSNM_WORKDIR", Path.home() / "osnm-z"))
+WORKDIR = Path(os.environ.get("OSNM_WORKDIR", Path.home() / "mint-cli"))
 ENV_PATH = WORKDIR / ".env"
 BASE = Path(os.environ.get("OSNM_STATE_DIR", Path.home() / ".osnm-ui"))
 JOBS_DIR = BASE / "jobs"
@@ -133,7 +133,7 @@ query MintCollectionSearch($query: String!) {
 }
 """
 
-app = FastAPI(title="osnm-z mint UI")
+app = FastAPI(title="SeaDrop Mint Console")
 _env_lock = threading.Lock()
 JOBS: dict[str, "Job"] = {}
 
@@ -205,7 +205,7 @@ def _write_env(values: dict[str, str]) -> None:
     if values.get("FEE_AUTOMATIC", "").lower() == "true":
         values.pop("MAX_FEE_PER_GAS_GWEI", None)
         values.pop("MAX_PRIORITY_FEE_PER_GAS_GWEI", None)
-    body = ["# Managed by the osnm-z web UI. Single-wallet mode only.",
+    body = ["# Managed by the SeaDrop mint console. Single-wallet mode only.",
             "# WALLET_KEY exists here only for the instant a mint starts.", ""]
     body += [f"{k}={values[k]}" for k in KNOWN_SETTINGS if k in values]
     tmp = ENV_PATH.with_suffix(".tmp")
@@ -254,7 +254,7 @@ def gql(op: str, query: str, variables: dict, slug: str) -> dict:
         headers={"Accept": "application/json", "x-app-id": APP_ID,
                  "Origin": "https://opensea.io",
                  "Referer": f"https://opensea.io/collection/{slug}",
-                 "User-Agent": "opensea-mint/0.1.0"},
+                 "User-Agent": "seadrop-console/1.0"},
         timeout=20.0,
     )
     r.raise_for_status()
@@ -331,12 +331,12 @@ def rpc_call(url: str, method: str, params: list) -> Any:
 
 def estimate_max_gas_cost(rpc_url: str, gas_limit: int,
                           attempts: int, bump_bps: int) -> int:
-    """Approximate the bot's own worst-case gas reserve.
+    """Approximate the CLI's own worst-case gas reserve.
 
-    The bot uses an EIP-1559 ceiling (roughly baseFee*2 + tip) and then bumps
+    The CLI uses an EIP-1559 ceiling (roughly baseFee*2 + tip) and then bumps
     it by REPLACEMENT_BUMP_BPS for each same-nonce replacement it is allowed to
     send. A plain eth_gasPrice underestimates this by ~3x, which made the UI
-    report "sufficient" for wallets the bot would refuse.
+    report "sufficient" for wallets the CLI would refuse.
     """
     block = rpc_call(rpc_url, "eth_getBlockByNumber", ["latest", False])
     base = int(block.get("baseFeePerGas") or "0x0", 16)
@@ -348,10 +348,10 @@ def estimate_max_gas_cost(rpc_url: str, gas_limit: int,
     if initial <= 0:
         initial = int(rpc_call(rpc_url, "eth_gasPrice", []), 16)
     factor = (bump_bps / 10_000) ** max(attempts - 1, 0)
-    # 30% margin. Base fee moves between our sample and the bot's, so
+    # 30% margin. Base fee moves between our sample and the CLI's, so
     # this is deliberately biased to warn EARLY: a false 'insufficient'
     # is just a red button you can still press, while a false
-    # 'sufficient' sends you into a mint the bot will refuse.
+    # 'sufficient' sends you into a mint the CLI will refuse.
     return int(gas_limit * initial * factor * 1.30)
 
 
@@ -501,7 +501,7 @@ def last_error(text: str) -> str | None:
         return errs[-1].strip()
     for needle in ("Operation cancelled.", "mint setup was cancelled"):
         if needle in text:
-            return f"the bot aborted: {needle}"
+            return f"the CLI aborted: {needle}"
     return None
 
 

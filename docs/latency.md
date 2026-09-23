@@ -100,7 +100,7 @@ rather than claim 11 ms.
 
 ## Result
 
-| | Standard (via the bot) | Turbo (pre-signed) |
+| | Standard (via the CLI) | Turbo (pre-signed) |
 |---|---|---|
 | Time to mempool after open | 0.55 – 1.35 s | **~85 ms** |
 | Dominant cost | OpenSea API, ~530 ms | node send, ~84 ms |
