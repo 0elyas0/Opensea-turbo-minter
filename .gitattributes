@@ -1,0 +1,7 @@
+# Keep LF in the repo and on checkout. install.sh and the systemd unit run on
+# Linux, where a CRLF shebang breaks the script outright.
+* text=auto eol=lf
+*.sh   text eol=lf
+*.py   text eol=lf
+*.service text eol=lf
+*.html text eol=lf

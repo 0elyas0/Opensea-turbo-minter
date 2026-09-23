@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+httpx[http2]
+pydantic
+eth-keys
+eth-account
+eth-hash[pycryptodome]

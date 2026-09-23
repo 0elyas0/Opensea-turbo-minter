@@ -1,0 +1,32 @@
+[Unit]
+Description=SeaDrop mint console (loopback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=osnm
+Group=osnm
+WorkingDirectory=/opt/osnm-ui
+Environment=OSNM_BIN=/usr/local/bin/opensea-mint
+Environment=OSNM_WORKDIR=/home/osnm/osnm-z
+Environment=OSNM_STATE_DIR=/home/osnm/.osnm-ui
+ExecStart=/opt/osnm-ui/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8787 --log-level warning
+Restart=on-failure
+RestartSec=3
+
+# Standard-mode mints are detached children (start_new_session=True), so
+# KillMode=process means restarting the console does not kill a pending mint.
+# Turbo jobs are in-process threads and DO die on restart - see the README.
+KillMode=process
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

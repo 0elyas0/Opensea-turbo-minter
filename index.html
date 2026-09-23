@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>osnm-z mint</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141821; --panel2:#1a1f2b; --line:#262c3a;
+    --fg:#e8eaf0; --dim:#8b94a7; --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+    --acc:#6366f1; --acc2:#22d3ee;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:
+        radial-gradient(1000px 500px at 80% -10%, #1b2136 0%, transparent 60%),
+        var(--bg);
+       color:var(--fg);font:14px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1060px;margin:0 auto;padding:24px 20px 60px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+  h1{font-size:19px;margin:0;letter-spacing:-.02em}
+  .logo{width:30px;height:30px;border-radius:9px;flex:none;
+        background:linear-gradient(135deg,var(--acc),var(--acc2));
+        display:grid;place-items:center;font-weight:700;font-size:14px;color:#0b0d12}
+  .sub{color:var(--dim);font-size:12px;margin-bottom:20px;
+       font-family:ui-monospace,Menlo,Consolas,monospace}
+  .chips{display:flex;gap:6px;margin-inline-start:auto;flex-wrap:wrap}
+  .chip{font-size:11px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);
+        background:var(--panel);color:var(--dim);white-space:nowrap}
+  .chip.ok{color:var(--ok);border-color:#1d5c46} .chip.bad{color:var(--bad);border-color:#7f1d1d}
+
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+          padding:16px 18px;margin-bottom:14px}
+  h2{font-size:11px;margin:0 0 12px;color:var(--dim);text-transform:uppercase;
+     letter-spacing:.1em;font-weight:600}
+  label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+  input,select{width:100%;padding:9px 11px;background:#0a0c11;border:1px solid var(--line);
+        border-radius:7px;color:var(--fg);font:13px ui-monospace,Menlo,Consolas,monospace}
+  input:focus,select:focus{outline:none;border-color:var(--acc);
+        box-shadow:0 0 0 3px rgba(99,102,241,.15)}
+  button{padding:9px 16px;background:var(--panel2);color:var(--fg);
+         border:1px solid var(--line);border-radius:7px;cursor:pointer;
+         font:13px/1 ui-sans-serif,system-ui,sans-serif;transition:.15s}
+  button:hover:not(:disabled){border-color:var(--acc);background:#232a3a}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .mint{width:100%;padding:15px;font-size:15px;font-weight:600;border:none;
+        background:linear-gradient(135deg,var(--acc),#8b5cf6);color:#fff;
+        border-radius:10px;letter-spacing:.02em}
+  .mint:hover:not(:disabled){filter:brightness(1.15)}
+  .mint.danger{background:linear-gradient(135deg,#dc2626,#b91c1c)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .row>div{flex:1;min-width:140px}
+
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:7px 16px;font-size:13px}
+  .kv dt{color:var(--dim)}
+  .kv dd{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;
+         word-break:break-all}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .dim{color:var(--dim)}
+
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+        padding:14px 16px;margin-top:12px;animation:rise .25s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11.5px;
+         font-weight:600;background:linear-gradient(135deg,var(--acc),var(--acc2));
+         color:#0b0d12}
+  .count{font:600 30px/1.1 ui-monospace,Menlo,Consolas,monospace;
+         color:var(--acc2);letter-spacing:.02em}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;
+     letter-spacing:.06em}
+  td.m{font-family:ui-monospace,Menlo,Consolas,monospace}
+  tr.dead td{opacity:.4}
+  tr.pick{background:rgba(99,102,241,.1)}
+
+  pre{background:#07090d;border:1px solid var(--line);border-radius:8px;padding:12px;
+      max-height:360px;overflow:auto;font-size:11.5px;white-space:pre-wrap;
+      word-break:break-word;font-family:ui-monospace,Menlo,Consolas,monospace;
+      color:#c9d1e0}
+  .note{font-size:11.5px;color:var(--dim);margin-top:8px}
+  .banner{padding:10px 13px;border-radius:8px;margin-bottom:12px;font-size:13px;display:none}
+  .banner.show{display:block;animation:rise .2s ease}
+  .banner.err{background:#2a1215;border:1px solid #7f1d1d;color:#fca5a5}
+  .banner.good{background:#0c2419;border:1px solid #166534;color:#86efac}
+  .banner.warn{background:#2a2110;border:1px solid #92650e;color:#fcd34d}
+  .modes{display:grid;gap:8px}
+  .mode{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;
+        border:1px solid var(--line);border-radius:9px;cursor:pointer;
+        background:#11151d;transition:.15s;margin:0}
+  .mode:hover{border-color:#3a4257}
+  .mode input{width:auto;margin-top:3px;flex:none}
+  .mode.on{border-color:var(--acc);background:rgba(99,102,241,.08)}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);
+        border-top-color:var(--acc2);border-radius:50%;animation:sp .7s linear infinite;
+        vertical-align:-1px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  details summary{cursor:pointer;color:var(--dim);font-size:12px;
+                  list-style:none;user-select:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary:before{content:"▸ ";transition:.2s}
+  details[open] summary:before{content:"▾ "}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">Z</div>
+    <h1>osnm-z mint scheduler</h1>
+    <div class="chips" id="chips"></div>
+  </header>
+  <div class="sub">single-wallet · a078b67 · 127.0.0.1 only · chain auto-detected per drop</div>
+
+  <div id="banner" class="banner"></div>
+
+  <!-- ============ 1. wallet ============ -->
+  <section>
+    <h2>1 · Wallet</h2>
+    <label>Private key — used for this run only, never stored</label>
+    <div class="row">
+      <div style="flex:5">
+        <input id="key" type="password" placeholder="0x… 64 hex characters"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div style="flex:0"><button onclick="clearKey()">Clear</button></div>
+    </div>
+    <div id="keyhint" class="note"></div>
+    <div class="note">Written into <code>.env</code> only for the instant the bot
+      reads it, then shredded. Enter a different wallet any time.</div>
+  </section>
+
+  <!-- ============ 2. target ============ -->
+  <section>
+    <h2>2 · What to mint</h2>
+    <div class="row">
+      <div style="flex:4">
+        <label>OpenSea link, slug, or contract address</label>
+        <input id="loc" placeholder="https://opensea.io/collection/… | slug | 0x…">
+      </div>
+      <div style="flex:1;min-width:110px">
+        <label>Quantity</label>
+        <input id="qty" type="number" min="1" value="1">
+      </div>
+      <div style="flex:0">
+        <button id="resolveBtn" onclick="doResolve()">Resolve</button>
+      </div>
+    </div>
+    <div id="plan"></div>
+  </section>
+
+  <!-- ============ 3. mint ============ -->
+  <section id="mintSection" style="display:none">
+    <h2>3 · Launch</h2>
+
+    <div class="modes">
+      <label class="mode" id="modeStdBox">
+        <input type="radio" name="mode" value="std" checked onchange="modeChanged()">
+        <div>
+          <strong>Standard</strong> — via the osnm-z bot
+          <div class="note" style="margin:2px 0 0">Works for every stage type
+            including allowlist and signed presale. Lands ~0.55–1.35 s after
+            open, because OpenSea's calldata API costs ~530 ms.</div>
+        </div>
+      </label>
+      <label class="mode" id="modeTurboBox">
+        <input type="radio" name="mode" value="turbo" onchange="modeChanged()">
+        <div>
+          <strong>Turbo</strong> — pre-signed, straight to the contract
+          <div class="note" style="margin:2px 0 0">Public SeaDrop stages only.
+            Transaction is built and signed before the stage opens, so T-0 costs
+            one broadcast (~11 ms). Never contacts OpenSea.</div>
+        </div>
+      </label>
+    </div>
+
+    <div id="turboPanel" style="display:none">
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>Priority fee / tip (gwei) — blank = auto</label>
+          <input id="tip" type="number" step="0.001" placeholder="auto">
+        </div>
+        <div>
+          <label>Base-fee multiplier</label>
+          <input id="basemul" type="number" step="0.5" value="3">
+        </div>
+        <div>
+          <label>Fire offset (ms) — 0 fires exactly at open</label>
+          <input id="offset" type="number" step="10" value="0">
+        </div>
+        <div style="flex:0"><button onclick="turboPlan()">Check</button></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label>Chain — only needed when you paste a raw 0x contract
+            (skips OpenSea entirely)</label>
+          <select id="tchain"><option value="">auto (resolve via OpenSea)</option></select>
+        </div>
+      </div>
+      <div id="turboPlan"></div>
+      <div class="note">A negative offset fires early; the transaction then
+        reverts if it lands in a block before the stage opens, and you lose the
+        gas. 0 is the safe competitive choice.</div>
+    </div>
+
+    <button class="mint" id="mintBtn" onclick="doMint()" style="margin-top:12px">MINT</button>
+    <div class="note" id="mintNote">The bot waits and fires at the exact stage
+      start time, with fees calculated automatically at that moment.</div>
+  </section>
+
+  <!-- ============ turbo live ============ -->
+  <section id="turboLive" style="display:none">
+    <h2>Turbo job</h2>
+    <div id="turboHead"></div>
+    <pre id="turboLog"></pre>
+    <button class="danger" onclick="turboCancel()"
+            style="background:#3b1418;border-color:#7f1d1d">Cancel</button>
+  </section>
+
+  <!-- ============ live ============ -->
+  <section id="live" style="display:none">
+    <h2>Live</h2>
+    <div id="liveHead"></div>
+    <pre id="log"></pre>
+    <div style="margin-top:10px">
+      <button class="danger" onclick="cancelJob()"
+              style="background:#3b1418;border-color:#7f1d1d">Cancel job</button>
+    </div>
+  </section>
+
+  <!-- ============ networks ============ -->
+  <section>
+    <h2>Networks</h2>
+    <div class="row" style="margin-bottom:12px">
+      <div style="flex:3">
+        <label>Alchemy API key — fills every network below at once</label>
+        <input id="alchemy" type="password" placeholder="your Alchemy key"
+               autocomplete="off" spellcheck="false">
+      </div>
+      <div style="flex:0"><button onclick="applyAlchemy()">Apply to all</button></div>
+    </div>
+    <div id="alchemyResult"></div>
+    <table id="nets"></table>
+    <div style="margin-top:10px"><button onclick="saveNets()">Save RPC endpoints</button></div>
+    <div class="note">A private RPC matters for a contested mint. The chain is
+      picked automatically from the drop. Each field also accepts a
+      <strong>comma-separated list</strong> — turbo fires at all of them at once
+      and takes whichever accepts first.</div>
+  </section>
+
+  <!-- ============ history ============ -->
+  <section>
+    <h2>Jobs</h2>
+    <table id="jobs"></table>
+  </section>
+</div>
+
+<script>
+let PLAN=null, CUR=null, WATCH=null, OFF=0, TICKER=null;
+let TPLAN=null, TCUR=null, TWATCH=null, TTICK=null;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function msg(t,k){const b=$('banner');b.textContent=t;b.className='banner show '+(k||'err');
+  if(k==='good')setTimeout(()=>{b.className='banner'},6000);}
+function clearMsg(){$('banner').className='banner';}
+async function api(p,o){const r=await fetch(p,o);
+  const j=await r.json().catch(()=>({detail:'bad response'}));
+  if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));return j;}
+function clearKey(){$('key').value='';$('keyhint').textContent='';}
+function keyHint(){
+  const raw=$('key').value.replace(/\s+/g,'');
+  const k=raw.toLowerCase().startsWith('0x')?raw.slice(2):raw;
+  const el=$('keyhint');
+  if(!k){el.textContent='';return;}
+  if(k.length===64&&/^[0-9a-f]+$/i.test(k)){
+    el.innerHTML='<span class="ok">✓ 64 hex characters</span>';
+  }else{
+    const bad=[...new Set([...k].filter(c=>!/[0-9a-f]/i.test(c)))].join('');
+    el.innerHTML=`<span class="bad">${k.length} characters`
+      +(bad?`, non-hex: ${bad.replace(/[&<>]/g,'?')}`:'')+` — need 64</span>`;
+  }
+}
+function keyVal(){const k=$('key').value.trim();
+  if(!k)throw new Error('Enter the private key first');return k;}
+function fmt(n,d){return (n===undefined||n===null)?'—':Number(n).toFixed(d??6);}
+
+function countdown(iso){
+  if(!iso)return null;
+  const ms=new Date(iso).getTime()-Date.now();
+  if(isNaN(ms))return null;
+  if(ms<=0)return 'now';
+  const s=Math.floor(ms/1000);
+  const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),
+        m=Math.floor(s%3600/60),x=s%60;
+  return (d?d+'d ':'')+String(h).padStart(2,'0')+':'
+         +String(m).padStart(2,'0')+':'+String(x).padStart(2,'0');
+}
+
+async function loadStatus(){
+  try{
+    const s=await api('/api/status');
+    $('chips').innerHTML=
+      `<span class="chip ${s.key_on_disk?'bad':'ok'}">key on disk: ${s.key_on_disk?'YES':'no'}</span>`
+     +`<span class="chip">gas limit ${esc(s.gas_limit||'—')}</span>`
+     +`<span class="chip">${s.networks_configured} RPC configured</span>`;
+  }catch(e){}
+}
+
+async function loadNets(){
+  try{
+    const {networks}=await api('/api/networks');
+    const rows=Object.entries(networks).sort((a,b)=>+a[0]-+b[0]);
+    $('nets').innerHTML='<tr><th>Chain</th><th>ID</th><th>RPC endpoint</th></tr>'
+      +rows.map(([cid,n])=>`<tr>
+        <td>${esc(n.name)}</td><td class="m dim">${cid}</td>
+        <td><input data-cid="${cid}" class="rpc" value="${esc(n.rpc||'')}"
+             placeholder="https://…"></td></tr>`).join('');
+    const sel=$('tchain'); const keep=sel.value;
+    sel.innerHTML='<option value="">auto (resolve via OpenSea)</option>'
+      +rows.map(([cid,n])=>`<option value="${cid}">${esc(n.name)} · ${cid}</option>`).join('');
+    sel.value=keep;
+  }catch(e){}
+}
+async function saveNets(){
+  clearMsg();
+  const nets={};
+  document.querySelectorAll('.rpc').forEach(i=>nets[i.dataset.cid]={rpc:i.value.trim()});
+  try{await api('/api/networks',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({networks:nets})});
+    msg('RPC endpoints saved.','good'); loadStatus();
+  }catch(e){msg(e.message);}
+}
+
+async function doResolve(){
+  clearMsg(); PLAN=null; $('mintSection').style.display='none';
+  const b=$('resolveBtn'); b.disabled=true; b.innerHTML='<span class="spin"></span>';
+  $('plan').innerHTML='';
+  try{
+    const body={locator:$('loc').value,quantity:+$('qty').value||1};
+    try{body.wallet_key=keyVal();}catch(e){/* balance check optional */}
+    const p=await api('/api/resolve',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    PLAN=p; renderPlan(p);
+  }catch(e){msg(e.message);}
+  finally{b.disabled=false; b.textContent='Resolve';}
+}
+
+function renderPlan(p){
+  const q=+$('qty').value||1;
+  const sym=p.symbol||'';
+  let h=`<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span class="badge">${esc(p.chain_name)} · ${p.chain_id}</span>
+      <strong>${esc(p.slug)}</strong>
+      <span class="dim" style="font-size:12px">${esc(p.drop_kind||'')}</span>
+    </div>`;
+
+  if(p.warning) h+=`<div class="banner warn show" style="margin:0 0 12px">${esc(p.warning)}</div>`;
+
+  const kv=[];
+  kv.push(['Contract',`<span class="dim">${esc(p.address)}</span>`]);
+  kv.push(['Price each', p.mint_price!==undefined
+     ? `<span class="ok">${fmt(p.mint_price)} ${esc(sym)}</span>
+        <span class="dim" style="font-size:11px">· ${esc(p.price_source)}</span>`
+     : `<span class="warn">unknown</span>
+        <span class="dim" style="font-size:11px">· ${esc(p.price_source||'')}</span>`]);
+  if(p.mint_price!==undefined)
+    kv.push(['Total for '+q, `${fmt(p.mint_price*q)} ${esc(sym)}`]);
+  if(p.wallet){
+    kv.push(['Wallet',`<span class="dim">${esc(p.wallet)}</span>`]);
+    if(p.balance!==undefined){
+      kv.push(['Balance', fmt(p.balance)+' '+esc(sym)]);
+      kv.push(['Gas buffer', fmt(p.gas_buffer)+' '+esc(sym)]);
+      kv.push(['Funding', p.underfunded
+        ? `<span class="bad">INSUFFICIENT — needs ${fmt(p.needed)} ${esc(sym)}</span>`
+        : `<span class="ok">sufficient</span>`]);
+    } else if(p.balance_error){
+      kv.push(['Balance',`<span class="bad">${esc(p.balance_error)}</span>`]);
+    }
+  }
+  h+=`<dl class="kv">${kv.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+
+  if(p.stages&&p.stages.length){
+    h+=`<div style="margin-top:14px"><table>
+      <tr><th></th><th>Stage</th><th>Type</th><th>Starts (UTC)</th><th>Ends</th><th>Max</th></tr>`;
+    const now=Date.now();
+    p.stages.forEach((s,i)=>{
+      const ended=s.end_time&&new Date(s.end_time).getTime()<now;
+      h+=`<tr class="${ended?'dead':''}">
+        <td><input type="radio" name="stg" value="${s.stage_index}"
+             ${ended?'disabled':''} style="width:auto"></td>
+        <td class="m">${s.stage_index}</td><td>${esc(s.stage_type)}</td>
+        <td class="m dim">${esc((s.start_time||'').replace('T',' ').replace('.000Z',''))}</td>
+        <td class="m dim">${esc((s.end_time||'').replace('T',' ').replace('.000Z',''))}</td>
+        <td class="m">${s.max_per_wallet??'—'}</td></tr>`;
+    });
+    h+='</table><div class="note">Leave unselected to let the bot pick the first eligible phase.</div></div>';
+  }
+
+  if(p.starts_at){
+    const c=countdown(p.starts_at);
+    h+=`<div style="margin-top:14px;text-align:center">
+      <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em">
+        Public stage starts in</div>
+      <div class="count" id="cd">${c||'—'}</div>
+      <div class="dim" style="font-size:11px">${esc(p.starts_at)}</div></div>`;
+  }
+  h+='</div>';
+  $('plan').innerHTML=h;
+
+  if(TICKER)clearInterval(TICKER);
+  if(p.starts_at) TICKER=setInterval(()=>{
+    const el=$('cd'); if(!el){clearInterval(TICKER);return;}
+    el.textContent=countdown(p.starts_at)||'—';
+  },1000);
+
+  const ready=p.rpc_url&&!p.warning;
+  $('mintSection').style.display=ready?'block':'none';
+  const btn=$('mintBtn');
+  if(ready){
+    const turbo=mode()==='turbo';
+    btn.className='mint'+(p.underfunded&&!turbo?' danger':'');
+    btn.textContent=turbo
+      ? `⚡ TURBO MINT ${q} × ${p.slug}`
+      : (p.underfunded ? 'MINT ANYWAY — BALANCE LOOKS TOO LOW'
+                       : `MINT ${q} × ${p.slug}`);
+  }
+}
+
+function mode(){return (document.querySelector('input[name=mode]:checked')||{}).value||'std';}
+function modeChanged(){
+  const t=mode()==='turbo';
+  $('turboPanel').style.display=t?'block':'none';
+  $('modeStdBox').classList.toggle('on',!t);
+  $('modeTurboBox').classList.toggle('on',t);
+  $('mintNote').textContent=t
+    ? 'Pre-signs now and broadcasts the instant the on-chain startTime passes.'
+    : 'The bot waits and fires at the stage start time, fees computed then.';
+  if(PLAN)renderPlan(PLAN);
+}
+
+function turboBody(){
+  const b={locator:$('loc').value,wallet_key:keyVal(),
+           quantity:+$('qty').value||1,
+           base_multiplier:+$('basemul').value||3,
+           fire_offset_ms:+$('offset').value||0};
+  const t=$('tip').value.trim();
+  if(t!=='')b.tip_gwei=+t;
+  const c=$('tchain').value;
+  if(c)b.chain_id=+c;
+  return b;
+}
+
+async function applyAlchemy(){
+  clearMsg();
+  const k=$('alchemy').value.trim();
+  if(!k){msg('Paste your Alchemy API key first');return;}
+  $('alchemyResult').innerHTML='<span class="spin"></span>';
+  try{
+    const r=await api('/api/networks/alchemy',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:k})});
+    $('alchemy').value='';
+    const rows=Object.entries(r.reachable||{}).map(([n,s])=>
+      `<dt>${esc(n)}</dt><dd class="${s==='ok'?'ok':'bad'}">${esc(s)}</dd>`).join('');
+    $('alchemyResult').innerHTML=
+      `<div class="card"><div class="note" style="margin:0 0 8px">Applied to
+        ${r.applied.length} network(s). Reachability check:</div>
+        <dl class="kv">${rows}</dl></div>`;
+    msg('Alchemy endpoints saved.','good');
+    loadNets(); loadStatus();
+  }catch(e){$('alchemyResult').innerHTML='';msg(e.message);}
+}
+
+async function turboPlan(){
+  clearMsg(); $('turboPlan').innerHTML='<span class="spin"></span>';
+  try{
+    const p=await api('/api/turbo/plan',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(turboBody())});
+    TPLAN=p;
+    const kv=[];
+    kv.push(['Contract',`<span class="dim">${esc(p.nft)}</span>`]);
+    kv.push(['Fee recipient',`<span class="dim">${esc(p.fee_recipient)}</span>`]);
+    kv.push(['Price each',`${fmt(p.price)}`]);
+    kv.push(['Value to send',`<span class="ok">${fmt(p.value)}</span>`]);
+    kv.push(['Calldata',`${p.calldata_bytes} bytes`]);
+    kv.push(['Gas limit',p.gas_limit]);
+    kv.push(['Max fee / tip',`${p.max_fee_gwei.toFixed(4)} / ${p.tip_gwei.toFixed(4)} gwei`
+      +` <span class="dim">(base ${p.base_fee_gwei.toFixed(4)})</span>`]);
+    kv.push(['Worst-case cost',fmt(p.worst_case_cost)]);
+    kv.push(['Balance',fmt(p.balance)+(p.underfunded
+      ?' <span class="bad">INSUFFICIENT</span>':' <span class="ok">ok</span>')]);
+    kv.push(['Per-wallet cap',`${p.max_per_wallet}`
+      +(p.already_minted!==null&&p.already_minted!==undefined
+        ?` <span class="dim">· already minted ${p.already_minted}`
+          +(p.remaining_allowance!==null?`, ${p.remaining_allowance} left`:'')+'</span>':'')]);
+    kv.push(['Stage open',p.is_open
+      ?'<span class="ok">yes, live now</span>'
+      :`<span class="warn">not yet — opens ${new Date(p.start_time*1000).toISOString()}</span>`]);
+    kv.push(['Simulation',p.simulated_ok===true
+      ?'<span class="ok">passed — this mint would succeed</span>'
+      :(p.simulated_ok===false
+        ?`<span class="bad">FAILED: ${esc(p.simulation_error)}</span>`
+        :'<span class="dim">skipped (stage not open yet)</span>')]);
+    let h=`<div class="card"><dl class="kv">`
+      +kv.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')+`</dl>`;
+    if(!p.is_open){
+      h+=`<div style="margin-top:12px;text-align:center">
+        <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em">Fires in</div>
+        <div class="count" id="tcd">—</div></div>`;
+    }
+    h+='</div>';
+    $('turboPlan').innerHTML=h;
+    if(TTICK)clearInterval(TTICK);
+    if(!p.is_open) TTICK=setInterval(()=>{
+      const el=$('tcd'); if(!el){clearInterval(TTICK);return;}
+      el.textContent=countdown(new Date(p.start_time*1000).toISOString())||'—';
+    },200);
+  }catch(e){$('turboPlan').innerHTML='';msg(e.message);}
+}
+
+async function turboArm(){
+  const q=+$('qty').value||1;
+  if(!TPLAN){await turboPlan(); if(!TPLAN)return;}
+  if(!confirm(`TURBO mint ${q} × ${TPLAN.slug||''}\n\n`
+    +`Send ${TPLAN.value} per attempt, worst case ${TPLAN.worst_case_cost.toFixed(9)} with gas.\n`
+    +`The transaction is signed NOW and broadcast the moment the stage opens.\n\n`
+    +`This spends real funds.`)) return;
+  const b=$('mintBtn'); b.disabled=true; b.innerHTML='<span class="spin"></span> signing…';
+  try{
+    const j=await api('/api/turbo/arm',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(turboBody())});
+    msg('Armed and pre-signed. It fires on its own — you can close the browser.','good');
+    turboWatch(j.id);
+  }catch(e){msg(e.message);}
+  finally{b.disabled=false; modeChanged();}
+}
+
+function turboWatch(id){
+  TCUR=id;
+  $('turboLive').style.display='block';
+  if(TWATCH)clearInterval(TWATCH);
+  const tick=async()=>{
+    try{
+      const d=await api(`/api/turbo/jobs/${id}`);
+      const cls=['failed','reverted'].includes(d.state)?'bad'
+        :(d.state==='minted'?'ok':(d.state==='waiting'?'warn':'dim'));
+      const busy=['waiting','firing','sent'].includes(d.state);
+      let h=`<dl class="kv">
+        <dt>State</dt><dd class="${cls}">${busy?'<span class="spin"></span> ':''}${esc(d.state)}</dd>
+        <dt>Wallet</dt><dd class="dim">${esc(d.wallet)}</dd>
+        <dt>Quantity</dt><dd>${d.quantity} × ${fmt(d.price)}</dd>
+        <dt>Tx hash</dt><dd class="${d.state==='minted'?'ok':'dim'}">${esc(d.tx_hash)}</dd>`;
+      if(d.receipt)h+=`<dt>Block</dt><dd>${d.receipt.block} · gas ${d.receipt.gas_used}</dd>`;
+      if(d.error)h+=`<dt>Error</dt><dd class="bad">${esc(d.error)}</dd>`;
+      h+='</dl>';
+      if(d.state==='waiting'&&d.seconds_to_fire>0){
+        h+=`<div style="margin-top:12px;text-align:center">
+          <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em">Fires in</div>
+          <div class="count">${countdown(new Date(Date.now()+d.seconds_to_fire*1000).toISOString())}</div></div>`;
+      }
+      $('turboHead').innerHTML=h;
+      $('turboLog').textContent=(d.log||[]).join('\n');
+      $('turboLog').scrollTop=$('turboLog').scrollHeight;
+      if(['minted','reverted','failed','cancelled','pending'].includes(d.state)){
+        clearInterval(TWATCH);TWATCH=null;
+      }
+    }catch(e){}
+  };
+  tick(); TWATCH=setInterval(tick,400);
+}
+
+async function turboCancel(){
+  if(!TCUR)return;
+  if(!confirm('Cancel this armed turbo mint?'))return;
+  try{await api(`/api/turbo/jobs/${TCUR}/cancel`,{method:'POST'});}catch(e){msg(e.message);}
+}
+
+async function doMint(){
+  if(mode()==='turbo')return turboArm();
+  clearMsg();
+  if(!PLAN)return;
+  const q=+$('qty').value||1;
+  const picked=document.querySelector('input[name=stg]:checked');
+  if(!confirm(`Mint ${q} × ${PLAN.slug} on ${PLAN.chain_name}?\n\n`
+    +`Price each: ${PLAN.mint_price!==undefined?PLAN.mint_price:'unknown'}\n`
+    +`This signs and broadcasts a real transaction at the stage start time.`)) return;
+  const b=$('mintBtn'); b.disabled=true; b.innerHTML='<span class="spin"></span> arming…';
+  try{
+    const r=await api('/api/mint',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({locator:$('loc').value,wallet_key:keyVal(),quantity:q,
+        chain_id:PLAN.chain_id,rpc_url:PLAN.rpc_url,
+        stage_index:picked?+picked.value:null})});
+    msg('Armed. Runs in the background — you can close the browser.','good');
+    watch(r.id);
+  }catch(e){msg(e.message);}
+  finally{b.disabled=false; renderPlan(PLAN);}
+}
+
+function watch(id){
+  CUR=id; OFF=0;
+  $('live').style.display='block'; $('log').textContent='';
+  if(WATCH)clearInterval(WATCH);
+  const tick=async()=>{
+    try{
+      const d=await api(`/api/jobs/${id}?offset=${OFF}`);
+      if(d.chunk){$('log').textContent+=d.chunk; OFF=d.offset;
+        $('log').scrollTop=$('log').scrollHeight;}
+      const busy=['starting','launching','resolving','configuring'].includes(d.state);
+      const cls=d.state==='failed'?'bad':(d.state==='finished'?'ok':
+                 (d.state==='scheduled'?'warn':'dim'));
+      let h=`<div class="kv">
+        <dt>State</dt><dd class="${cls}">${busy?'<span class="spin"></span> ':''}${esc(d.state)}</dd>
+        <dt>Wallet</dt><dd class="dim">${esc(d.address||'')}</dd>`;
+      if(d.chain_name)h+=`<dt>Chain</dt><dd>${esc(d.chain_name)} · ${d.chain_id}</dd>`;
+      if(d.quantity)h+=`<dt>Quantity</dt><dd>${d.quantity}</dd>`;
+      if(d.price!==undefined&&d.price!==null)h+=`<dt>Price each</dt><dd>${fmt(d.price)}</dd>`;
+      if(d.error)h+=`<dt>Error</dt><dd class="bad">${esc(d.error)}</dd>`;
+      if(d.tx&&d.tx.length)h+=`<dt>Tx</dt><dd class="ok">${esc(d.tx[d.tx.length-1])}</dd>`;
+      h+='</div>';
+      if(d.starts_at&&d.state==='scheduled'){
+        h+=`<div style="margin-top:12px;text-align:center">
+          <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em">Fires in</div>
+          <div class="count">${countdown(d.starts_at)||'—'}</div></div>`;
+      }
+      if(d.summary&&d.summary.length){
+        h+=`<details style="margin-top:10px"><summary>bot summary</summary>
+            <pre style="max-height:160px;margin-top:8px">${esc(d.summary.join('\n'))}</pre></details>`;
+      }
+      $('liveHead').innerHTML=h;
+      loadJobs(); loadStatus();
+    }catch(e){}
+  };
+  tick(); WATCH=setInterval(tick,1200);
+}
+
+async function cancelJob(){
+  if(!CUR)return;
+  if(!confirm('Cancel this job? A scheduled mint will not fire.'))return;
+  try{await api(`/api/jobs/${CUR}/cancel`,{method:'POST'});loadJobs();}
+  catch(e){msg(e.message);}
+}
+
+async function loadJobs(){
+  try{
+    const js=await api('/api/jobs');
+    $('jobs').innerHTML='<tr><th>ID</th><th>Collection</th><th>Chain</th><th>Qty</th>'
+      +'<th>State</th><th>Tx</th><th></th></tr>'
+      +(js.length?js.map(j=>`<tr>
+        <td class="m dim">${esc(j.id)}</td>
+        <td>${esc(j.slug||'')}</td>
+        <td class="dim">${esc(j.chain_name||'')}</td>
+        <td class="m">${j.quantity??''}</td>
+        <td class="${j.state==='failed'?'bad':(j.state==='finished'?'ok':
+             (j.state==='scheduled'?'warn':''))}">${esc(j.state)}</td>
+        <td class="m dim">${j.tx&&j.tx.length?esc(j.tx[j.tx.length-1]).slice(0,12)+'…':''}</td>
+        <td><button onclick="watch('${j.id}')">watch</button></td>
+      </tr>`).join(''):'<tr><td colspan="7" class="dim">no jobs yet</td></tr>');
+  }catch(e){}
+}
+
+$('key').addEventListener('input',keyHint);
+$('qty').addEventListener('input',()=>{if(PLAN)renderPlan(PLAN);});
+$('loc').addEventListener('keydown',e=>{if(e.key==='Enter')doResolve();});
+modeChanged();
+loadStatus(); loadNets(); loadJobs(); setInterval(loadJobs,6000);
+</script>
+</body>
+</html>
