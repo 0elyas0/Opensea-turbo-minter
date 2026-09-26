@@ -348,6 +348,7 @@ class SignedJob:
     def as_dict(self) -> dict:
         return {
             "id": self.id, "kind": "signed", "state": self.state,
+            "dry_run": self.dry_run,
             "slug": self.slug, "chain_id": self.chain_id,
             "chain_name": self.chain_name, "wallet": self.wallet,
             "quantity": self.quantity, "stage_index": self.stage_index,

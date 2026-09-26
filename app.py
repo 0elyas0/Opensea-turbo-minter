@@ -831,6 +831,18 @@ def signed_arm(body: SignedIn):
     end = signed_mod.iso_to_unix(stage["end_time"]) if stage.get("end_time") else None
     if end and time.time() > end:
         raise HTTPException(400, "that stage has already ended")
+    # A rehearsal exists to prove the pipeline, which only works against a stage
+    # that is open NOW. Arming one on a future stage would do everything except
+    # broadcast at the exact moment that matters - it silently burns the mint.
+    if body.dry_run and start > time.time():
+        opens = datetime.fromtimestamp(start, timezone.utc).isoformat()
+        raise HTTPException(
+            400,
+            f"Refusing to arm a rehearsal on a stage that has not opened yet "
+            f"(stage {stage['stage_index']} opens {opens}). At that moment it "
+            f"would fetch, validate and sign but NOT broadcast - you would miss "
+            f"the mint. Rehearse against a stage that is open right now, then "
+            f"arm this one with the rehearsal box unticked.")
 
     base, auto_tip, _ = turbo.fee_suggestion(rpcs[0], body.base_multiplier)
     tip = int(body.tip_gwei * 1e9) if body.tip_gwei is not None else auto_tip

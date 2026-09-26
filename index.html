@@ -198,7 +198,7 @@
         <div style="flex:0"><button onclick="signedPlan()">Check stages</button></div>
       </div>
       <label class="mode" style="margin-top:10px">
-        <input type="checkbox" id="sdry">
+        <input type="checkbox" id="sdry" onchange="dryChanged()">
         <div><strong>Rehearsal (dry run)</strong>
           <div class="note" style="margin:2px 0 0">Fetches the real calldata,
             validates it and signs — then stops without broadcasting. Nothing is
@@ -248,7 +248,7 @@
 
   <!-- ============ turbo live ============ -->
   <section id="turboLive" style="display:none">
-    <h2>Turbo job</h2>
+    <h2 id="jobPanelTitle">Job</h2>
     <div id="turboHead"></div>
     <pre id="turboLog"></pre>
     <button class="danger" onclick="turboCancel()"
@@ -301,6 +301,7 @@ const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function msg(t,k){const b=$('banner');b.textContent=t;b.className='banner show '+(k||'err');
+  b.scrollIntoView({behavior:'smooth',block:'center'});
   if(k==='good')setTimeout(()=>{b.className='banner'},6000);}
 function clearMsg(){$('banner').className='banner';}
 async function api(p,o){const r=await fetch(p,o);
@@ -482,6 +483,13 @@ function modeChanged(){
   if(PLAN)renderPlan(PLAN);
 }
 
+function dryChanged(){
+  if(!SPLAN)return;
+  $('mintBtn').textContent=$('sdry').checked
+    ? '⚑ ARM REHEARSAL (no broadcast)' : '⚡ ARM SIGNED MINT';
+  $('mintBtn').className='mint'+($('sdry').checked?' danger':'');
+}
+
 function signedBody(){
   const b={locator:$('loc').value,wallet_key:keyVal(),
            quantity:+$('qty').value||1,
@@ -537,7 +545,8 @@ async function signedPlan(){
 
 async function signedArm(){
   clearMsg();
-  if(SSTAGE===null){msg('Pick which stage to target first');return;}
+  if(!SPLAN){msg('Press "Check stages" first, then pick which stage to target.');return;}
+  if(SSTAGE===null){msg('Pick which stage to target in the table above.');return;}
   const s=(SPLAN.stages||[]).find(x=>x.stage_index===SSTAGE)||{};
   if(!confirm(`Arm a SIGNED mint\n\nStage ${SSTAGE} (${s.stage_type})\n`
     +`Opens ${new Date((s.starts_unix||0)*1000).toISOString()}\n`
@@ -565,7 +574,12 @@ function signedWatch(id){
       const cls=['failed','reverted','rejected'].includes(d.state)?'bad'
         :(d.state==='minted'?'ok':(d.state==='waiting'?'warn':'dim'));
       const busy=['waiting','fetching','broadcasting','sent'].includes(d.state);
-      let h=`<dl class="kv">
+      $('jobPanelTitle').textContent = d.dry_run ? 'Rehearsal job' : 'Signed mint job';
+      let h = d.dry_run
+        ? `<div class="banner warn show" style="margin:0 0 12px"><strong>REHEARSAL</strong>
+             — this will fetch, validate and sign, but will NOT broadcast.
+             Nothing will be minted.</div>` : '';
+      h+=`<dl class="kv">
         <dt>State</dt><dd class="${cls}">${busy?'<span class="spin"></span> ':''}${esc(d.state)}</dd>
         <dt>Stage</dt><dd>${d.stage_index} · ${esc(d.stage_type)}</dd>
         <dt>Wallet</dt><dd class="dim">${esc(d.wallet)}</dd>`;
