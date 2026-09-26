@@ -500,7 +500,22 @@ async function turboPlan(){
       :(p.simulated_ok===false
         ?`<span class="bad">FAILED: ${esc(p.simulation_error)}</span>`
         :'<span class="dim">skipped (stage not open yet)</span>')]);
-    let h=`<div class="card"><dl class="kv">`
+    let h='<div class="card">';
+    if(p.stage_warning){
+      h+=`<div class="banner warn show" style="margin:0 0 12px">
+            <strong>⚠ Earlier stage detected</strong><br>${esc(p.stage_warning)}</div>`;
+    }
+    if(p.earlier_stages&&p.earlier_stages.length){
+      h+='<table style="margin-bottom:12px"><tr><th>Earlier stage</th><th>Type</th>'
+        +'<th>Starts (UTC)</th><th>Turbo</th></tr>'
+        +p.earlier_stages.map(s=>`<tr>
+            <td class="m">${s.stage_index}</td>
+            <td>${esc(s.stage_type||'')}</td>
+            <td class="m dim">${esc((s.start_time||'').replace('T',' ').replace('.000Z',''))}</td>
+            <td class="bad">cannot mint</td></tr>`).join('')
+        +'</table>';
+    }
+    h+=`<dl class="kv">`
       +kv.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')+`</dl>`;
     if(!p.is_open){
       h+=`<div style="margin-top:12px;text-align:center">

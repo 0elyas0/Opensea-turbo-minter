@@ -51,7 +51,10 @@ SEL_PUBLIC_DROP = _sel("getPublicDrop(address)")
 SEL_FEE_RECIPIENTS = _sel("getAllowedFeeRecipients(address)")
 SEL_MINT_STATS = _sel("getMintStats(address)")
 SEL_BALANCE_OF = _sel("balanceOf(address)")
+SEL_SIGNERS = _sel("getSigners(address)")
+SEL_MERKLE_ROOT = _sel("getAllowListMerkleRoot(address)")
 ZERO = "0x" + "0" * 40
+ZERO_WORD = "0x" + "0" * 64
 
 
 def _addr(a: str) -> str:
@@ -132,6 +135,47 @@ def minted_so_far(url: str, nft: str, wallet: str) -> int | None:
         return int(out, 16)
     except Exception:  # noqa: BLE001
         return None
+
+
+def drop_gating(url: str, nft: str) -> dict:
+    """How this drop gates its NON-public stages.
+
+    This decides whether turbo could ever serve an earlier stage:
+
+    * a non-zero merkle root means the allowlist is a Merkle tree, and a proof
+      can in principle be built off-chain in advance -> `mintAllowList`
+    * a configured signer means the presale is SIGNED: the contract demands an
+      ECDSA signature from that key over the mint params. Only the key holder
+      (OpenSea) can produce it, and only after its own eligibility check, so it
+      cannot be pre-computed at any price -> `mintSigned` is out of reach.
+
+    Neither is supported by turbo today; the point of reading them is to say so
+    out loud instead of silently falling through to the public stage.
+    """
+    signers: list[str] = []
+    try:
+        out = eth_call(url, SEADROP, SEL_SIGNERS + _addr(nft))
+        b = bytes.fromhex(out[2:])
+        if len(b) >= 64:
+            count = int.from_bytes(b[32:64], "big")
+            signers = ["0x" + b[64 + i * 32 + 12: 64 + (i + 1) * 32].hex()
+                       for i in range(count)]
+    except Exception:  # noqa: BLE001
+        pass
+
+    merkle_root = None
+    try:
+        merkle_root = eth_call(url, SEADROP, SEL_MERKLE_ROOT + _addr(nft))
+    except Exception:  # noqa: BLE001
+        pass
+
+    has_merkle = bool(merkle_root) and merkle_root != ZERO_WORD
+    return {
+        "signers": signers,
+        "signed_presale": bool(signers),
+        "merkle_allowlist": has_merkle,
+        "merkle_root": merkle_root if has_merkle else None,
+    }
 
 
 def mint_public_calldata(nft: str, fee_recipient: str, minter: str, qty: int) -> str:
@@ -333,9 +377,38 @@ def run_turbo(job: TurboJob) -> None:
 # --------------------------------------------------------------------------
 # planning + arming
 # --------------------------------------------------------------------------
+def earlier_stages(stages: list[dict] | None, public_start: int) -> list[dict]:
+    """Stages that open before the public one and have not already ended.
+
+    Turbo targets the public stage, so if the wallet is eligible for one of
+    these it would otherwise sit waiting for a stage that opens later - and on
+    SeaDrop the per-wallet cap counts total mints, so taking the earlier one
+    usually makes the public mint revert anyway.
+    """
+    if not stages:
+        return []
+    now = time.time()
+    out = []
+    for s in stages:
+        start, end = s.get("start_time"), s.get("end_time")
+        if not start:
+            continue
+        try:
+            ts = time.mktime(time.strptime(start[:19], "%Y-%m-%dT%H:%M:%S"))
+            ts -= time.timezone  # the API returns UTC
+            te = None
+            if end:
+                te = time.mktime(time.strptime(end[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+        except (ValueError, TypeError):
+            continue
+        if ts < public_start and (te is None or te > now):
+            out.append({**s, "starts_unix": int(ts)})
+    return sorted(out, key=lambda s: s["starts_unix"])
+
+
 def build_plan(rpc_urls: list[str], nft: str, wallet: str, quantity: int,
                gas_limit: int | None, base_multiplier: float,
-               tip_gwei: float | None) -> dict:
+               tip_gwei: float | None, stages: list[dict] | None = None) -> dict:
     url = rpc_urls[0]
     chain_id = int(rpc(url, "eth_chainId", []), 16)
     drop = public_drop(url, nft)
@@ -389,7 +462,40 @@ def build_plan(rpc_urls: list[str], nft: str, wallet: str, quantity: int,
     balance = int(rpc(url, "eth_getBalance", [wallet, "latest"]), 16)
     worst_cost = value + gas_limit * max_fee
 
+    # Turbo can only serve the public stage. If earlier stages exist, say so
+    # loudly rather than silently scheduling for a later one.
+    gating = drop_gating(url, nft)
+    earlier = earlier_stages(stages, drop["start_time"])
+    stage_warning = None
+    if earlier:
+        names = ", ".join(f"{s.get('stage_type','?')} at {s['start_time'][:16]}Z"
+                          for s in earlier)
+        if gating["signed_presale"]:
+            stage_warning = (
+                f"{len(earlier)} earlier stage(s) open before the public one "
+                f"({names}). They are SIGNED presale: the contract requires an "
+                f"ECDSA signature from OpenSea's signer "
+                f"({gating['signers'][0][:10]}…) that cannot be pre-computed, so "
+                f"turbo cannot mint them. If you are eligible for one, use "
+                f"Standard mode for it. Note the per-wallet cap counts total "
+                f"mints, so minting there will make this public mint revert."
+            )
+        elif gating["merkle_allowlist"]:
+            stage_warning = (
+                f"{len(earlier)} earlier stage(s) open before the public one "
+                f"({names}), gated by a Merkle allowlist. Turbo does not build "
+                f"Merkle proofs yet, so use Standard mode for those."
+            )
+        else:
+            stage_warning = (
+                f"{len(earlier)} earlier stage(s) open before the public one "
+                f"({names}). Turbo targets the public stage only."
+            )
+
     return {
+        "gating": gating,
+        "earlier_stages": earlier,
+        "stage_warning": stage_warning,
         "chain_id": chain_id, "nft": nft, "fee_recipient": fee_recipient,
         "quantity": quantity, "price_wei": drop["mint_price_wei"],
         "price": drop["mint_price_wei"] / 1e18,

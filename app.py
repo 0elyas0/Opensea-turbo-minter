@@ -702,7 +702,8 @@ def turbo_plan(body: TurboIn):
     info, rpcs = turbo_context(body.locator, body.chain_id)
     try:
         plan = turbo.build_plan(rpcs, info["address"], wallet, body.quantity,
-                                body.gas_limit, body.base_multiplier, body.tip_gwei)
+                                body.gas_limit, body.base_multiplier, body.tip_gwei,
+                                stages=info.get("stages"))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"cannot build a public-mint plan: {exc}") from exc
     plan |= {"slug": info["slug"], "wallet": wallet,
@@ -719,7 +720,8 @@ def turbo_arm(body: TurboIn):
     wallet = address_of(key)
     try:
         plan = turbo.build_plan(rpcs, info["address"], wallet, body.quantity,
-                                body.gas_limit, body.base_multiplier, body.tip_gwei)
+                                body.gas_limit, body.base_multiplier, body.tip_gwei,
+                                stages=info.get("stages"))
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"cannot build a public-mint plan: {exc}") from exc
     if plan["underfunded"]:
