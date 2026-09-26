@@ -39,6 +39,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+import signed as signed_mod
 import turbo
 
 # All paths are overridable so the service is not tied to one machine's layout.
@@ -737,6 +738,161 @@ def turbo_arm(body: TurboIn):
     job = turbo.arm(job_id, plan, key, info["slug"], body.fire_offset_ms)
     del key
     TURBO_JOBS[job_id] = job
+    return job.as_dict()
+
+
+class SignedIn(BaseModel):
+    locator: str
+    wallet_key: str
+    quantity: int = 1
+    stage_index: int | None = None
+    gas_limit: int | None = None
+    base_multiplier: float = 3.0
+    tip_gwei: float | None = None
+    # Hard ceiling on what a single mint may cost. 0 means free stages only,
+    # which is the safe default because a signed stage's price is not readable
+    # on-chain - it arrives inside the calldata OpenSea returns.
+    max_value_eth: float = 0.0
+    fire_offset_ms: int = 0
+
+
+SIGNED_JOBS: dict[str, Any] = {}
+
+
+@app.post("/api/signed/plan")
+def signed_plan(body: SignedIn):
+    """Everything needed to choose a stage. Unauthenticated, so it costs none
+    of the tiny mint-action rate-limit budget."""
+    key = normalise_key(body.wallet_key)
+    wallet = address_of(key)
+    del key
+    info = resolve_collection(body.locator)
+    cid = info["chain_id"]
+    rpcs = rpc_list_for(cid)
+    nets = load_networks()
+
+    now = int(time.time())
+    stages = []
+    for s in info.get("stages") or []:
+        if not s.get("start_time"):
+            continue
+        start = signed_mod.iso_to_unix(s["start_time"])
+        end = signed_mod.iso_to_unix(s["end_time"]) if s.get("end_time") else None
+        stages.append({**s, "starts_unix": start, "ends_unix": end,
+                       "open": start <= now and (end is None or now < end),
+                       "upcoming": start > now,
+                       "signed": s.get("stage_type") != "PUBLIC_SALE"})
+    stages.sort(key=lambda s: s["starts_unix"])
+
+    gating = turbo.drop_gating(rpcs[0], info["address"])
+    base, auto_tip, _ = turbo.fee_suggestion(rpcs[0], body.base_multiplier)
+    tip = int(body.tip_gwei * 1e9) if body.tip_gwei is not None else auto_tip
+    max_fee = int(base * body.base_multiplier) + tip
+    gas_limit = body.gas_limit or 350_000
+    balance = int(turbo.rpc(rpcs[0], "eth_getBalance", [wallet, "latest"]), 16)
+    minted = turbo.minted_so_far(rpcs[0], info["address"], wallet)
+    worst = int(body.max_value_eth * 1e18) * body.quantity + gas_limit * max_fee
+
+    return {
+        "slug": info["slug"], "nft": info["address"], "chain_id": cid,
+        "chain_name": nets.get(str(cid), {}).get("name", f"chain {cid}"),
+        "symbol": nets.get(str(cid), {}).get("symbol", ""),
+        "wallet": wallet, "stages": stages, "gating": gating,
+        "already_minted": minted,
+        "gas_limit": gas_limit, "base_fee_gwei": base / 1e9,
+        "tip_gwei": tip / 1e9, "max_fee_gwei": max_fee / 1e9,
+        "balance": balance / 1e18, "worst_case_cost": worst / 1e18,
+        "underfunded": balance < worst, "rpcs": rpcs,
+        "note": ("Eligibility is decided by OpenSea at fire time. Check the "
+                 "collection page to confirm this wallet is on the list."),
+    }
+
+
+@app.post("/api/signed/arm")
+def signed_arm(body: SignedIn):
+    key = normalise_key(body.wallet_key)
+    wallet = address_of(key)
+    info = resolve_collection(body.locator)
+    cid = info["chain_id"]
+    rpcs = rpc_list_for(cid)
+    nets = load_networks()
+
+    stage = None
+    for s in info.get("stages") or []:
+        if s.get("stage_index") == body.stage_index and s.get("start_time"):
+            stage = s
+            break
+    if stage is None:
+        raise HTTPException(400, f"stage {body.stage_index} not found on this drop")
+    start = signed_mod.iso_to_unix(stage["start_time"])
+    end = signed_mod.iso_to_unix(stage["end_time"]) if stage.get("end_time") else None
+    if end and time.time() > end:
+        raise HTTPException(400, "that stage has already ended")
+
+    base, auto_tip, _ = turbo.fee_suggestion(rpcs[0], body.base_multiplier)
+    tip = int(body.tip_gwei * 1e9) if body.tip_gwei is not None else auto_tip
+    max_fee = int(base * body.base_multiplier) + tip
+    gas_limit = body.gas_limit or 350_000
+    max_value_wei = int(body.max_value_eth * 1e18)
+
+    balance = int(turbo.rpc(rpcs[0], "eth_getBalance", [wallet, "latest"]), 16)
+    worst = max_value_wei * body.quantity + gas_limit * max_fee
+    if balance < worst:
+        raise HTTPException(400, f"balance {balance/1e18:.9f} is under the worst-case "
+                                 f"cost {worst/1e18:.9f}")
+
+    # Authenticate now, well ahead of the stage, so T-0 pays nothing for it.
+    session = signed_mod.OpenSeaSession(info["slug"])
+    try:
+        session.login(key)
+    except Exception as exc:  # noqa: BLE001
+        session.close()
+        raise HTTPException(502, f"OpenSea sign-in failed: {exc}") from exc
+    meta = session.metadata()
+    drop_address = ((meta.get("drop") or {}).get("identifier") or {}).get(
+        "contractAddress") or info["address"]
+    chain_ident = meta["chain"]["identifier"]
+
+    nonce = int(turbo.rpc(rpcs[0], "eth_getTransactionCount",
+                          [wallet, "pending"]), 16)
+    job_id = time.strftime("%Y%m%d-%H%M%S") + "-s"
+    job = signed_mod.SignedJob(
+        id=job_id, slug=info["slug"], chain_id=cid,
+        chain_name=nets.get(str(cid), {}).get("name", f"chain {cid}"),
+        nft=info["address"], drop_address=drop_address, chain_ident=chain_ident,
+        wallet=wallet, quantity=body.quantity,
+        stage_index=stage["stage_index"], stage_type=stage.get("stage_type", "?"),
+        start_time=start, fire_at=max(start + body.fire_offset_ms / 1000.0, time.time()),
+        rpcs=rpcs, gas_limit=gas_limit, max_fee=max_fee, tip=tip, nonce=nonce,
+        max_value_wei=max_value_wei,
+    )
+    SIGNED_JOBS[job_id] = job
+    threading.Thread(target=signed_mod.run_signed, args=(job, session, key),
+                     daemon=True).start()
+    del key
+    return job.as_dict()
+
+
+@app.get("/api/signed/jobs")
+def signed_jobs():
+    return [j.as_dict() for j in sorted(SIGNED_JOBS.values(),
+                                        key=lambda j: j.created, reverse=True)]
+
+
+@app.get("/api/signed/jobs/{job_id}")
+def signed_job(job_id: str):
+    job = SIGNED_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "unknown signed job")
+    return job.as_dict()
+
+
+@app.post("/api/signed/jobs/{job_id}/cancel")
+def signed_cancel(job_id: str):
+    job = SIGNED_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "unknown signed job")
+    job.cancel()
     return job.as_dict()
 
 

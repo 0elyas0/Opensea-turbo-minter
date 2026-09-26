@@ -170,6 +170,38 @@
             one broadcast (~11 ms). Never contacts OpenSea.</div>
         </div>
       </label>
+      <label class="mode" id="modeSignedBox">
+        <input type="radio" name="mode" value="signed" onchange="modeChanged()">
+        <div>
+          <strong>Signed stage</strong> — allowlist / FCFS / GTD
+          <div class="note" style="margin:2px 0 0">For stages OpenSea must sign.
+            Cannot be pre-signed, but fires the calldata request exactly at T-0
+            instead of blind-polling: ~700 ms to mempool versus ~1150 ms.</div>
+        </div>
+      </label>
+    </div>
+
+    <div id="signedPanel" style="display:none">
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>Max you will pay per NFT — 0 means free stages only</label>
+          <input id="smaxval" type="number" step="0.00001" value="0">
+        </div>
+        <div>
+          <label>Priority fee / tip (gwei) — blank = auto</label>
+          <input id="stip" type="number" step="0.001" placeholder="auto">
+        </div>
+        <div>
+          <label>Fire offset (ms)</label>
+          <input id="soffset" type="number" step="10" value="0">
+        </div>
+        <div style="flex:0"><button onclick="signedPlan()">Check stages</button></div>
+      </div>
+      <div id="signedPlan"></div>
+      <div class="note">Eligibility is decided by OpenSea at fire time — this
+        cannot know in advance whether you are on the list. Confirm on the
+        collection page first. The per-wallet cap counts total mints, so taking
+        an early stage usually makes a later one revert.</div>
     </div>
 
     <div id="turboPanel" style="display:none">
@@ -256,6 +288,7 @@
 <script>
 let PLAN=null, CUR=null, WATCH=null, OFF=0, TICKER=null;
 let TPLAN=null, TCUR=null, TWATCH=null, TTICK=null;
+let SPLAN=null, SCUR=null, SSTAGE=null;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -428,14 +461,121 @@ function renderPlan(p){
 
 function mode(){return (document.querySelector('input[name=mode]:checked')||{}).value||'std';}
 function modeChanged(){
-  const t=mode()==='turbo';
-  $('turboPanel').style.display=t?'block':'none';
-  $('modeStdBox').classList.toggle('on',!t);
-  $('modeTurboBox').classList.toggle('on',t);
-  $('mintNote').textContent=t
-    ? 'Pre-signs now and broadcasts the instant the on-chain startTime passes.'
-    : 'The CLI waits and fires at the stage start time, fees computed then.';
+  const m=mode();
+  $('turboPanel').style.display =m==='turbo' ?'block':'none';
+  $('signedPanel').style.display=m==='signed'?'block':'none';
+  $('modeStdBox').classList.toggle('on',m==='std');
+  $('modeTurboBox').classList.toggle('on',m==='turbo');
+  $('modeSignedBox').classList.toggle('on',m==='signed');
+  $('mintNote').textContent =
+     m==='turbo'  ? 'Pre-signs now and broadcasts the instant the on-chain startTime passes.'
+   : m==='signed' ? 'Requests the signed calldata exactly at T-0, validates it, then broadcasts.'
+   :                'The CLI waits and fires at the stage start time, fees computed then.';
   if(PLAN)renderPlan(PLAN);
+}
+
+function signedBody(){
+  const b={locator:$('loc').value,wallet_key:keyVal(),
+           quantity:+$('qty').value||1,
+           max_value_eth:+$('smaxval').value||0,
+           fire_offset_ms:+$('soffset').value||0};
+  const t=$('stip').value.trim();
+  if(t!=='')b.tip_gwei=+t;
+  if(SSTAGE!==null)b.stage_index=SSTAGE;
+  return b;
+}
+
+async function signedPlan(){
+  clearMsg(); $('signedPlan').innerHTML='<span class="spin"></span>';
+  try{
+    const p=await api('/api/signed/plan',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(signedBody())});
+    SPLAN=p;
+    const now=Date.now()/1000;
+    let h='<div class="card">';
+    if(p.underfunded)
+      h+=`<div class="banner err show" style="margin:0 0 12px">Balance ${fmt(p.balance)}
+          is under the worst case ${fmt(p.worst_case_cost)}.</div>`;
+    h+='<table><tr><th></th><th>Stage</th><th>Type</th><th>Opens (UTC)</th>'
+      +'<th>Needs OpenSea</th><th>Status</th></tr>'
+      +p.stages.map(s=>{
+        const dead=s.ends_unix&&s.ends_unix<now;
+        return `<tr class="${dead?'dead':''}">
+          <td><input type="radio" name="sstg" value="${s.stage_index}"
+               ${dead?'disabled':''} onchange="SSTAGE=${s.stage_index};"
+               style="width:auto"></td>
+          <td class="m">${s.stage_index}</td>
+          <td>${esc(s.stage_type)}</td>
+          <td class="m dim">${new Date(s.starts_unix*1000).toISOString().slice(0,19).replace('T',' ')}</td>
+          <td>${s.signed?'<span class="warn">signature</span>':'<span class="ok">no</span>'}</td>
+          <td>${dead?'ended':(s.open?'<span class="ok">open</span>':'upcoming')}</td></tr>`;
+      }).join('')+'</table>';
+    const kv=[['Wallet',`<span class="dim">${esc(p.wallet)}</span>`],
+              ['Already minted',p.already_minted],
+              ['Gas limit',p.gas_limit],
+              ['Max fee / tip',`${p.max_fee_gwei.toFixed(4)} / ${p.tip_gwei.toFixed(4)} gwei`],
+              ['Balance',fmt(p.balance)+' '+esc(p.symbol||'')],
+              ['Worst case',fmt(p.worst_case_cost)]];
+    h+=`<dl class="kv" style="margin-top:12px">`
+      +kv.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')+'</dl></div>';
+    $('signedPlan').innerHTML=h;
+    $('mintSection').style.display='block';
+    $('mintBtn').className='mint';
+    $('mintBtn').textContent='⚡ ARM SIGNED MINT';
+  }catch(e){$('signedPlan').innerHTML='';msg(e.message);}
+}
+
+async function signedArm(){
+  clearMsg();
+  if(SSTAGE===null){msg('Pick which stage to target first');return;}
+  const s=(SPLAN.stages||[]).find(x=>x.stage_index===SSTAGE)||{};
+  if(!confirm(`Arm a SIGNED mint\n\nStage ${SSTAGE} (${s.stage_type})\n`
+    +`Opens ${new Date((s.starts_unix||0)*1000).toISOString()}\n`
+    +`Quantity ${+$('qty').value||1}, max ${+$('smaxval').value||0} per NFT\n\n`
+    +`OpenSea decides eligibility at fire time. This spends real funds.`)) return;
+  const b=$('mintBtn'); b.disabled=true; b.innerHTML='<span class="spin"></span> signing in…';
+  try{
+    const j=await api('/api/signed/arm',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(signedBody())});
+    msg('Armed and signed in to OpenSea. It fires on its own.','good');
+    signedWatch(j.id);
+  }catch(e){msg(e.message);}
+  finally{b.disabled=false; b.textContent='⚡ ARM SIGNED MINT';}
+}
+
+function signedWatch(id){
+  SCUR=id;
+  $('turboLive').style.display='block';
+  if(TWATCH)clearInterval(TWATCH);
+  const tick=async()=>{
+    try{
+      const d=await api(`/api/signed/jobs/${id}`);
+      const cls=['failed','reverted','rejected'].includes(d.state)?'bad'
+        :(d.state==='minted'?'ok':(d.state==='waiting'?'warn':'dim'));
+      const busy=['waiting','fetching','broadcasting','sent'].includes(d.state);
+      let h=`<dl class="kv">
+        <dt>State</dt><dd class="${cls}">${busy?'<span class="spin"></span> ':''}${esc(d.state)}</dd>
+        <dt>Stage</dt><dd>${d.stage_index} · ${esc(d.stage_type)}</dd>
+        <dt>Wallet</dt><dd class="dim">${esc(d.wallet)}</dd>`;
+      if(d.decoded)h+=`<dt>Validated</dt><dd class="ok">${esc(d.decoded.function)}
+        · qty ${d.decoded.quantity} · value ${d.decoded.value}</dd>`;
+      if(d.tx_hash)h+=`<dt>Tx</dt><dd class="${d.state==='minted'?'ok':'dim'}">${esc(d.tx_hash)}</dd>`;
+      if(d.receipt)h+=`<dt>Block</dt><dd>${d.receipt.block} · gas ${d.receipt.gas_used}</dd>`;
+      if(d.error)h+=`<dt>Error</dt><dd class="bad">${esc(d.error)}</dd>`;
+      h+='</dl>';
+      if(d.state==='waiting'&&d.seconds_to_fire>0)
+        h+=`<div style="margin-top:12px;text-align:center">
+          <div class="dim" style="font-size:11px;text-transform:uppercase;letter-spacing:.1em">Fires in</div>
+          <div class="count">${countdown(new Date(Date.now()+d.seconds_to_fire*1000).toISOString())}</div></div>`;
+      $('turboHead').innerHTML=h;
+      $('turboLog').textContent=(d.log||[]).join('\n');
+      $('turboLog').scrollTop=$('turboLog').scrollHeight;
+      if(['minted','reverted','failed','cancelled','pending','rejected'].includes(d.state)){
+        clearInterval(TWATCH);TWATCH=null;
+      }
+    }catch(e){}
+  };
+  tick(); TWATCH=setInterval(tick,400);
 }
 
 function turboBody(){
@@ -584,13 +724,17 @@ function turboWatch(id){
 }
 
 async function turboCancel(){
-  if(!TCUR)return;
-  if(!confirm('Cancel this armed turbo mint?'))return;
-  try{await api(`/api/turbo/jobs/${TCUR}/cancel`,{method:'POST'});}catch(e){msg(e.message);}
+  const signed = SCUR && !TCUR ? true : mode()==='signed';
+  const id = signed ? SCUR : TCUR;
+  if(!id)return;
+  if(!confirm('Cancel this armed mint?'))return;
+  const path = signed ? `/api/signed/jobs/${id}/cancel` : `/api/turbo/jobs/${id}/cancel`;
+  try{await api(path,{method:'POST'});}catch(e){msg(e.message);}
 }
 
 async function doMint(){
   if(mode()==='turbo')return turboArm();
+  if(mode()==='signed')return signedArm();
   clearMsg();
   if(!PLAN)return;
   const q=+$('qty').value||1;

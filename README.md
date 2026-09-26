@@ -95,6 +95,58 @@ OpenSea entirely — useful on chains OpenSea does not index.
 
 ---
 
+## Signed mode — allowlist / FCFS / GTD stages
+
+Allowlist stages on OpenSea are usually `SIGNED_PRESALE` on-chain, meaning
+`mintSigned`: the contract demands an ECDSA signature from OpenSea's signer.
+Two things were verified before building this:
+
+- `getAllowListMerkleRoot()` is zero while `getSigners()` returns OpenSea's key,
+  so there is no Merkle proof to precompute
+- requesting calldata before a stage opens returns `DropNotMintingError`
+
+So these stages genuinely **cannot** be pre-signed. What can still be won is
+*when the request goes out*.
+
+| | Standard | **Signed mode** |
+|---|---|---|
+| First request after open | up to ~830 ms late | **+0.0 ms** |
+| OpenSea round trip | ~580 ms | ~590 ms |
+| To mempool | ~1150 ms | **~700 ms** |
+
+Three things make the difference:
+
+1. **No blind polling.** The on-chain `startTime` is known and the host clock is
+   NTP-synced to microseconds, so the request goes out *at* T-0 rather than being
+   guessed at from T-2s.
+2. **Backend priming.** The first mint-action query on a session costs ~810 ms;
+   later ones cost ~550 ms. Warming the socket does not help — the penalty is
+   server-side — so one throwaway request is sent at T-30s to pay it in advance.
+   It returns `DropNotMintingError`, has no side effects, and the budget refills.
+3. **Rate-limit discipline.** That endpoint allows roughly 5 requests per 15 s.
+   Blind polling burns the budget before it matters; this spends one request on
+   time and keeps the rest as backoff. Trivial warm-up queries use a separate,
+   far larger bucket (measured 399 versus 4), so keeping the socket hot is free.
+
+### Nothing is signed until the calldata is checked
+
+The target and calldata come from an unofficial API, so `validate_action`
+rejects the response unless every one of these holds: the destination is the
+canonical SeaDrop, the selector is a known mint function, the decoded NFT
+contract matches the one requested, quantity matches, `minterIfNotPayer` is zero
+or this wallet, `value` equals `mintPrice × quantity`, `value` is within the
+ceiling you set, the chain id matches, and the stage window brackets now.
+
+`MintParams` is seven `uint256` plus a `bool` — all value types, so it is a
+static struct encoded inline, which is what makes the fixed word offsets in the
+decoder correct.
+
+**Max you will pay** defaults to `0`, meaning free stages only. A signed stage's
+price is not readable on-chain in advance — it arrives inside the calldata — so
+spending anything is an explicit opt-in.
+
+---
+
 ## Private key handling
 
 This is the part worth reading carefully.
