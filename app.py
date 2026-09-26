@@ -856,6 +856,13 @@ def signed_arm(body: SignedIn):
         raise HTTPException(400, f"balance {balance/1e18:.9f} is under the worst-case "
                                  f"cost {worst/1e18:.9f}")
 
+    missing = signed_mod.verify_selectors(rpcs[0])
+    if missing:
+        raise HTTPException(
+            502, f"this SeaDrop deployment does not expose {', '.join(missing)} "
+                 f"with the ABI this build expects; refusing to arm rather than "
+                 f"reject the response at fire time")
+
     # Authenticate now, well ahead of the stage, so T-0 pays nothing for it.
     session = signed_mod.OpenSeaSession(info["slug"])
     try:

@@ -60,14 +60,28 @@ SIWE_STATEMENT = (
     "(https://opensea.io/tos) and Privacy Policy (https://opensea.io/privacy)."
 )
 
+# Read out of the deployed SeaDrop bytecode, not derived from a guessed
+# signature. MintParams is SEVEN uint256 plus a bool, not eight. An earlier
+# build assumed eight, produced 0x41af4372 for mintSigned, and would have
+# rejected every real response as an unknown selector at the one moment that
+# mattered.
+#   mintPublic(address,address,address,uint256)
+#   mintAllowList(address,address,address,uint256,
+#       (uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool),bytes32[])
+#   mintSigned(address,address,address,uint256,
+#       (uint256,uint256,uint256,uint256,uint256,uint256,uint256,bool),uint256,bytes)
 SEL_MINT_PUBLIC = "0x161ac21f"
-SEL_MINT_ALLOWLIST = "0x92cffffd"
-SEL_MINT_SIGNED = "0x41af4372"
+SEL_MINT_ALLOWLIST = "0x4300a4e6"
+SEL_MINT_SIGNED = "0x4b61cd6f"
 KNOWN_SELECTORS = {
     SEL_MINT_PUBLIC: "mintPublic",
     SEL_MINT_ALLOWLIST: "mintAllowList",
     SEL_MINT_SIGNED: "mintSigned",
 }
+# Deliberately absent: mintAllowedTokenHolder(address,address,address,
+# (address,uint256[])). Its fourth word is an offset, not a quantity, so the
+# layout below would misread it. Refusing an unknown selector is the safe
+# outcome for a call we cannot verify.
 
 META_QUERY = """
 query MintCollectionMetadata($slug: String!) {
@@ -105,6 +119,22 @@ RETRYABLE = {"DropNotMintingError", "RateLimitError", "InternalServerError"}
 # --------------------------------------------------------------------------
 def _words(data: bytes, n: int) -> list[int]:
     return [int.from_bytes(data[i * 32:(i + 1) * 32], "big") for i in range(n)]
+
+
+def verify_selectors(url: str) -> list[str]:
+    """Confirm the mint selectors really exist in the deployed SeaDrop.
+
+    A wrong signature constant is invisible until a live response arrives and
+    is rejected as an unknown selector - which is exactly when there is no time
+    left to fix it. This turns that into a loud failure at arm time. Returns
+    the names of any that are missing.
+    """
+    try:
+        code = rpc(url, "eth_getCode", [SEADROP, "latest"])[2:]
+    except Exception:  # noqa: BLE001
+        return []
+    return [name for sel_hex, name in KNOWN_SELECTORS.items()
+            if sel_hex[2:] not in code]
 
 
 def decode_mint_calldata(data_hex: str) -> dict:
