@@ -49,6 +49,7 @@ from typing import Any
 import httpx
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from eth_utils import to_checksum_address
 
 from turbo import SEADROP, _addr, _broadcast, _warm, rpc
 
@@ -513,7 +514,10 @@ def run_signed(job: SignedJob, session: OpenSeaSession, private_key: str) -> Non
         job.say(f"validated {decoded['function']} stage={decoded.get('drop_stage_index')} "
                 f"qty={decoded['quantity']} value={decoded['value']}")
 
-        tx = {"chainId": job.chain_id, "nonce": job.nonce, "to": action["to"],
+        # OpenSea returns `to` lowercased; eth_account rejects a non-EIP-55
+        # address outright, so it has to be checksummed before signing.
+        tx = {"chainId": job.chain_id, "nonce": job.nonce,
+              "to": to_checksum_address(action["to"]),
               "value": decoded["value"], "gas": job.gas_limit,
               "maxFeePerGas": job.max_fee, "maxPriorityFeePerGas": job.tip,
               "data": action["data"], "type": 2}
