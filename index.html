@@ -197,6 +197,14 @@
         </div>
         <div style="flex:0"><button onclick="signedPlan()">Check stages</button></div>
       </div>
+      <label class="mode" style="margin-top:10px">
+        <input type="checkbox" id="sdry">
+        <div><strong>Rehearsal (dry run)</strong>
+          <div class="note" style="margin:2px 0 0">Fetches the real calldata,
+            validates it and signs — then stops without broadcasting. Nothing is
+            spent. Use it on any live stage to prove the whole path works.</div>
+        </div>
+      </label>
       <div id="signedPlan"></div>
       <div class="note">Eligibility is decided by OpenSea at fire time — this
         cannot know in advance whether you are on the list. Confirm on the
@@ -478,7 +486,8 @@ function signedBody(){
   const b={locator:$('loc').value,wallet_key:keyVal(),
            quantity:+$('qty').value||1,
            max_value_eth:+$('smaxval').value||0,
-           fire_offset_ms:+$('soffset').value||0};
+           fire_offset_ms:+$('soffset').value||0,
+           dry_run:$('sdry').checked};
   const t=$('stip').value.trim();
   if(t!=='')b.tip_gwei=+t;
   if(SSTAGE!==null)b.stage_index=SSTAGE;
@@ -521,7 +530,8 @@ async function signedPlan(){
     $('signedPlan').innerHTML=h;
     $('mintSection').style.display='block';
     $('mintBtn').className='mint';
-    $('mintBtn').textContent='⚡ ARM SIGNED MINT';
+    $('mintBtn').textContent=$('sdry').checked
+      ? '⚑ ARM REHEARSAL (no broadcast)' : '⚡ ARM SIGNED MINT';
   }catch(e){$('signedPlan').innerHTML='';msg(e.message);}
 }
 
@@ -532,7 +542,9 @@ async function signedArm(){
   if(!confirm(`Arm a SIGNED mint\n\nStage ${SSTAGE} (${s.stage_type})\n`
     +`Opens ${new Date((s.starts_unix||0)*1000).toISOString()}\n`
     +`Quantity ${+$('qty').value||1}, max ${+$('smaxval').value||0} per NFT\n\n`
-    +`OpenSea decides eligibility at fire time. This spends real funds.`)) return;
+    +($('sdry').checked
+      ? `REHEARSAL: nothing will be broadcast and nothing spent.`
+      : `OpenSea decides eligibility at fire time. This spends real funds.`))) return;
   const b=$('mintBtn'); b.disabled=true; b.innerHTML='<span class="spin"></span> signing in…';
   try{
     const j=await api('/api/signed/arm',{method:'POST',

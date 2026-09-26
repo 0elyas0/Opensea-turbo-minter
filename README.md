@@ -145,6 +145,22 @@ decoder correct.
 price is not readable on-chain in advance — it arrives inside the calldata — so
 spending anything is an explicit opt-in.
 
+### The wallet must be funded before OpenSea will even answer
+
+OpenSea checks the balance server-side and returns `InsufficientFundError`
+instead of calldata if it is too low. This happens *before* anything is signed,
+so an underfunded wallet does not fail at broadcast — it never gets a
+transaction at all. **Even a free mint needs comfortable gas headroom.** That
+error is deliberately not in the retry set, so the job fails fast rather than
+burning the small rate-limit budget on a condition that will not change.
+
+### Rehearsal mode
+
+Tick **Rehearsal (dry run)** and the job does everything — fires at T-0, fetches
+real calldata, validates it, signs the transaction — then stops instead of
+broadcasting. Nothing is spent. Run it against any stage that is currently open
+to prove the whole path end to end before a drop you care about.
+
 ---
 
 ## Private key handling

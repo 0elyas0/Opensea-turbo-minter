@@ -754,6 +754,9 @@ class SignedIn(BaseModel):
     # on-chain - it arrives inside the calldata OpenSea returns.
     max_value_eth: float = 0.0
     fire_offset_ms: int = 0
+    # Rehearsal: fetch and validate real calldata, sign it, then stop
+    # short of broadcasting. Nothing is spent.
+    dry_run: bool = False
 
 
 SIGNED_JOBS: dict[str, Any] = {}
@@ -864,7 +867,7 @@ def signed_arm(body: SignedIn):
         stage_index=stage["stage_index"], stage_type=stage.get("stage_type", "?"),
         start_time=start, fire_at=max(start + body.fire_offset_ms / 1000.0, time.time()),
         rpcs=rpcs, gas_limit=gas_limit, max_fee=max_fee, tip=tip, nonce=nonce,
-        max_value_wei=max_value_wei,
+        max_value_wei=max_value_wei, dry_run=body.dry_run,
     )
     SIGNED_JOBS[job_id] = job
     threading.Thread(target=signed_mod.run_signed, args=(job, session, key),

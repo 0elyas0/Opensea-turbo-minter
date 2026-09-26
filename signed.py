@@ -328,6 +328,10 @@ class SignedJob:
     tip: int
     nonce: int
     max_value_wei: int
+    # A rehearsal: do everything including fetching real calldata, validating
+    # it and signing, then stop instead of broadcasting. Costs nothing and is
+    # the only way to prove the pipeline end to end without spending.
+    dry_run: bool = False
     state: str = "armed"
     error: str | None = None
     tx_hash: str | None = None
@@ -447,7 +451,17 @@ def run_signed(job: SignedJob, session: OpenSeaSession, private_key: str) -> Non
             job.say(f"attempt {attempt}: {err} after {ms:.0f} ms")
             if err not in RETRYABLE:
                 job.state = "failed"
-                job.error = f"OpenSea refused: {err}"
+                if err == "InsufficientFundError":
+                    # OpenSea checks the balance server-side and withholds the
+                    # calldata entirely, so this fails before anything is signed.
+                    job.error = ("OpenSea refused: the wallet's balance is too low "
+                                 "for it to issue calldata. Top it up - even a free "
+                                 "mint needs gas headroom.")
+                elif err == "MintWalletIneligible":
+                    job.error = ("OpenSea refused: this wallet is not eligible for "
+                                 "that stage.")
+                else:
+                    job.error = f"OpenSea refused: {err}"
                 return
         if not action:
             job.state = "failed"
@@ -476,6 +490,13 @@ def run_signed(job: SignedJob, session: OpenSeaSession, private_key: str) -> Non
         raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
         raw_hex = "0x" + raw.hex().removeprefix("0x")
         job.tx_hash = "0x" + signed.hash.hex().removeprefix("0x")
+
+        if job.dry_run:
+            job.state = "dry-run-ok"
+            job.say(f"DRY RUN: real calldata fetched, validated and signed "
+                    f"({len(raw_hex)//2} byte tx, {job.tx_hash}). "
+                    f"Nothing was broadcast and nothing was spent.")
+            return
 
         job.state = "broadcasting"
         with ThreadPoolExecutor(max_workers=max(len(job.rpcs), 1)) as pool:
