@@ -410,9 +410,17 @@ def run_signed(job: SignedJob, session: OpenSeaSession, private_key: str) -> Non
         job.state = "waiting"
         job.say(f"armed for stage {job.stage_index} ({job.stage_type}); "
                 f"session authenticated as {job.wallet}")
-        _warm(clients)
-        session.warm()
-        job.say("OpenSea session and RPC connections warmed")
+
+        # Warming costs ~590 ms. When the stage opens in the future that is
+        # free - it happens long before T-0. When the stage is ALREADY open it
+        # is pure delay, and paying the ~250 ms cold-request penalty instead is
+        # the better trade, so go straight for the calldata.
+        if job.fire_at - time.time() > 8:
+            _warm(clients)
+            session.warm()
+            job.say("OpenSea session and RPC connections warmed")
+        else:
+            job.say("stage already open - skipping warm-up and going straight for it")
 
         # Re-authenticate and re-warm shortly before the stage so neither the
         # session nor the sockets are cold at T-0. Budget-free: the auth
